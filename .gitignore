@@ -13,3 +13,4 @@ PLLJ_PLLSPE_INFO.txt
 *.rpt
 *.smsg
 *.summary
+*.DS_Store
