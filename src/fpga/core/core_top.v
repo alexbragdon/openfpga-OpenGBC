@@ -494,7 +494,67 @@ core_bridge_cmd icb (
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
+//clocks
+wire clk4 = ce_cpu;
+wire clk8 = ce_pix;
 
+reg ce_pix, ce_cpu;
+always @(posedge clk_core_67108864) begin
+	reg [3:0] div = 0;
+	div <= div + 1'd1;
+	ce_pix   <= !div[2:0];
+	ce_cpu   <= !div[3:0];
+end
+
+// Gameboy
+gb gb (
+    .reset(~pll_core_locked),
+
+    .clk_sys    ( clk_core_67108864 ),
+	 .ce         ( clk4              ),
+	 .ce_2x      ( clk8              ),
+
+    // Audio
+    .audio_l     ( audio_l          ),
+    .audio_r     ( audio_r          ),
+	 
+	 // interface to the lcd
+	.lcd_clkena   ( lcd_clkena       ),
+	.lcd_data     ( lcd_data         ),
+	.lcd_mode     ( lcd_mode         ),
+	.lcd_on       ( lcd_on           )
+);
+
+// video generation
+wire lcd_clkena;
+wire [14:0] lcd_data;
+wire [1:0] lcd_mode;
+wire lcd_on;
+
+// the lcd to vga converter
+wire [5:0] video_r, video_g, video_b;
+wire video_hs, video_vs;
+
+lcd lcd (
+	 .clk    ( clk64      ),
+	 .pclk_en( ce_pix     ),
+	 .clk4_en( clk4       ),
+
+	 .tint   ( 0          ),
+	 .isGBC  ( 0          ),
+
+	 // serial interface
+	 .clkena ( lcd_clkena ),
+	 .data   ( lcd_data   ),
+	 .mode   ( lcd_mode   ),  // used to detect begin of new lines and frames
+	 .on     ( lcd_on     ),
+	 
+	 .hs    ( video_hs    ),
+	 .vs    ( video_vs    ),
+	 .r     ( video_r     ),
+	 .g     ( video_g     ),
+	 .b     ( video_b     )
+);
 
 // video generation
 // ~12,288,000 hz pixel clock
@@ -524,10 +584,10 @@ assign video_hs = vidout_hs;
     localparam  VID_H_TOTAL = 'd400;
 
     reg [15:0]  frame_count;
-    
+
     reg [9:0]   x_count;
     reg [9:0]   y_count;
-    
+
     wire [9:0]  visible_x = x_count - VID_H_BPORCH;
     wire [9:0]  visible_y = y_count - VID_V_BPORCH;
 
@@ -536,37 +596,37 @@ assign video_hs = vidout_hs;
     reg         vidout_skip;
     reg         vidout_vs;
     reg         vidout_hs, vidout_hs_1;
-    
+
     reg [9:0]   square_x = 'd135;
     reg [9:0]   square_y = 'd95;
 
 always @(posedge clk_core_12288 or negedge reset_n) begin
 
     if(~reset_n) begin
-    
+
         x_count <= 0;
         y_count <= 0;
-        
+
     end else begin
         vidout_de <= 0;
         vidout_skip <= 0;
         vidout_vs <= 0;
         vidout_hs <= 0;
-        
+
         vidout_hs_1 <= vidout_hs;
         vidout_de_1 <= vidout_de;
-        
+
         // x and y counters
         x_count <= x_count + 1'b1;
         if(x_count == VID_H_TOTAL-1) begin
             x_count <= 0;
-            
+
             y_count <= y_count + 1'b1;
             if(y_count == VID_V_TOTAL-1) begin
                 y_count <= 0;
             end
         end
-        
+
         // generate sync 
         if(x_count == 0 && y_count == 0) begin
             // sync signal in back porch
@@ -574,7 +634,7 @@ always @(posedge clk_core_12288 or negedge reset_n) begin
             vidout_vs <= 1;
             frame_count <= frame_count + 1'b1;
         end
-        
+
         // we want HS to occur a bit after VS, not on the same cycle
         if(x_count == 3) begin
             // sync signal in back porch
@@ -590,23 +650,23 @@ always @(posedge clk_core_12288 or negedge reset_n) begin
             if(y_count >= VID_V_BPORCH && y_count < VID_V_ACTIVE+VID_V_BPORCH) begin
                 // data enable. this is the active region of the line
                 vidout_de <= 1;
-                
+
                 vidout_rgb[23:16] <= 8'd60;
                 vidout_rgb[15:8]  <= 8'd60;
                 vidout_rgb[7:0]   <= 8'd60;
-                
+
             end 
         end
     end
 end
 
-
-
-
 //
 // audio i2s silence generator
 // see other examples for actual audio generation
 //
+
+wire [15:0] audio_l;
+wire [15:0] audio_r;
 
 assign audio_mclk = audgen_mclk;
 assign audio_dac = audgen_dac;
@@ -654,7 +714,7 @@ end
 
 
     wire    clk_core_12288;
-    wire    clk_core_12288_90deg;
+    wire    clk_core_67108864;
     
     wire    pll_core_locked;
     wire    pll_core_locked_s;
@@ -665,7 +725,7 @@ mf_pllbase mp1 (
     .rst            ( 0 ),
     
     .outclk_0       ( clk_core_12288 ),
-    .outclk_1       ( clk_core_12288_90deg ),
+    .outclk_1       ( clk_core_67108864 ),
     
     .locked         ( pll_core_locked )
 );
